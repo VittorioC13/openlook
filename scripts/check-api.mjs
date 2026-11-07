@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {writeFile,mkdir} from 'node:fs/promises';
+const base='http://127.0.0.1:5173';
+const login=await fetch(`${base}/signin-with-chatgpt?return_to=/today`,{redirect:'manual'});
+const cookie=login.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie,'Local sign-in cookie');
+const headers={'Content-Type':'application/json',Origin:base,Cookie:cookie};
+const payload={name:'A private illustrated look',occasion:'work',weather:{tempC:18,condition:'rain'},items:[{category:'outerwear',color:'#25364B',name:'Navy wool blazer'},{category:'bottom',color:'#F0E8D9',name:'Ecru trousers'},{category:'shoes',color:'#4E4C47',name:'Leather loafers'}],reasoning:[{label:'weather',text:'18°C and raining. A layer for the cooler hours.'},{label:'occasion',text:'A little structure for the working day.'}]};
+const post=(body,extra={})=>fetch(`${base}/api/share`,{method:'POST',headers:{...headers,...extra},body:JSON.stringify(body)});
+assert.equal((await fetch(`${base}/api/share`,{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify(payload)})).status,401);
+assert.equal((await post(payload,{Origin:'https://invalid.example'})).status,403);
+assert.equal((await post({...payload,photo:'private'})).status,400);
+const created=await post(payload);assert.equal(created.status,201,await created.clone().text());const {token}=await created.json();assert.match(token,/^[a-f0-9]{32}$/);
+const read=await fetch(`${base}/api/share/${token}`);assert.equal(read.status,200);assert.deepEqual((await read.json()).data,payload);
+const page=await fetch(`${base}/share/${token}`);assert.equal(page.status,200);const html=await page.text();assert.ok(html.includes(payload.name));assert.ok(!html.includes('seedy@sites.test'));
+const og=await fetch(`${base}/share/${token}/opengraph-image`);assert.equal(og.status,200,await og.clone().text());const buffer=Buffer.from(await og.arrayBuffer());assert.equal(buffer.readUInt32BE(16),1200);assert.equal(buffer.readUInt32BE(20),630);await mkdir('work',{recursive:true});await writeFile('work/share-og.png',buffer);
+assert.equal((await fetch(`${base}/api/share/${token}`,{method:'DELETE',headers})).status,200);assert.equal((await fetch(`${base}/api/share/${token}`)).status,404);
+const one=await (await post(payload)).json(),two=await (await post(payload)).json();assert.equal((await fetch(`${base}/api/share`,{method:'DELETE',headers})).status,200);for(const id of [one.token,two.token])assert.equal((await fetch(`${base}/api/share/${id}`)).status,404);
+console.log(JSON.stringify({api:'PASS',checks:12,og:[1200,630],privacy:'No image fields accepted; owner identity absent from payload and rendered page.'},null,2));

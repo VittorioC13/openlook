@@ -1,0 +1,2 @@
+import {removeBackground} from '@imgly/background-removal';
+self.onmessage=async(event:MessageEvent<unknown>)=>{if(typeof event.data!=='string')return;try{const blob=await removeBackground(event.data,{model:'isnet_quint8',device:'cpu'});const reader=new FileReader();reader.onload=()=>self.postMessage({image:reader.result});reader.onerror=()=>self.postMessage({image:null});reader.readAsDataURL(blob);}catch{self.postMessage({image:null});}};
